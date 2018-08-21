@@ -414,7 +414,14 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	ret, err := run(evm, contract, nil, false)
 
 	// check whether the max code size has been exceeded
-	maxCodeSizeExceeded := evm.ChainConfig().IsEIP158(evm.BlockNumber) && len(ret) > params.MaxCodeSize
+	var maxCodeSizeExceeded bool
+	if evm.ChainConfig().IsEIP158(evm.BlockNumber) {
+		maxCodeSizeExceeded = len(ret) > params.MaxCodeSize
+	} else if evm.ChainConfig().IsEWASM(evm.BlockNumber) {
+		maxCodeSizeExceeded = len(ret) > params.MaxEwasmCodeSize
+	} else {
+		maxCodeSizeExceeded = false
+	}
 	// if the contract creation ran successfully and no errors were returned
 	// calculate the gas required to store the code. If the code could not
 	// be stored due to not enough gas set an error and let it be handled
