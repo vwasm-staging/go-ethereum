@@ -8,6 +8,8 @@
 #include <evmc/evmc.h>
 #include <evmc/helpers.h>
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -21,7 +23,7 @@
 #else
 #include <dlfcn.h>
 #define DLL_HANDLE void*
-#define DLL_OPEN(filename) dlopen(filename, RTLD_LAZY)
+#define DLL_OPEN(filename) dlopen(NULL, RTLD_NOW)
 #define DLL_CLOSE(handle) dlclose(handle)
 #define DLL_GET_CREATE_FN(handle, name) (evmc_create_fn)(uintptr_t) dlsym(handle, name)
 #define HAVE_STRCPY_S 0
@@ -43,6 +45,7 @@ static void strcpy_s(char* dest, size_t destsz, const char* src)
 
 evmc_create_fn evmc_load(const char* filename, enum evmc_loader_error_code* error_code)
 {
+    printf("doing evmc_load..\n");
     enum evmc_loader_error_code ec = EVMC_LOADER_SUCCESS;
     evmc_create_fn create_fn = NULL;
 
@@ -59,12 +62,18 @@ evmc_create_fn evmc_load(const char* filename, enum evmc_loader_error_code* erro
         goto exit;
     }
 
-    DLL_HANDLE handle = DLL_OPEN(filename);
+    DLL_HANDLE handle = DLL_OPEN(NULL);
     if (!handle)
     {
+        printf("no handle after dll_open!!\n");
+        printf("dlerror info:   %s\n", dlerror());
+        exit(0);
         ec = EVMC_LOADER_CANNOT_OPEN;
         goto exit;
     }
+
+    printf("assuming got handle to main program...\n");
+    //exit(0);
 
     // Create name buffer with the prefix.
     const char prefix[] = "evmc_create_";
@@ -103,6 +112,7 @@ evmc_create_fn evmc_load(const char* filename, enum evmc_loader_error_code* erro
     // Search for the built function name.
     while ((create_fn = DLL_GET_CREATE_FN(handle, prefixed_name)) == NULL)
     {
+        printf("dlerror info:   %s\n", dlerror());
         // Shorten the base name by skipping the `word_` segment.
         const char* shorter_name_pos = strchr(base_name, '_');
         if (!shorter_name_pos)
@@ -111,12 +121,18 @@ evmc_create_fn evmc_load(const char* filename, enum evmc_loader_error_code* erro
         memmove(base_name, shorter_name_pos + 1, strlen(shorter_name_pos) + 1);
     }
 
-    if (!create_fn)
-        create_fn = DLL_GET_CREATE_FN(handle, "evmc_create");
+    if (!create_fn) {
+        printf("trying with evmc_create_hera...\n");
+        create_fn = DLL_GET_CREATE_FN(handle, "evmc_create_hera");
+    }
+
 
     if (!create_fn)
     {
+        printf("couldnt get create_fn!!\n");
+        printf("dlerror info:   %s\n", dlerror());
         DLL_CLOSE(handle);
+        //exit(1);
         ec = EVMC_LOADER_SYMBOL_NOT_FOUND;
     }
 

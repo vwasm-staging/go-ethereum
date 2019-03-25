@@ -6,6 +6,7 @@ package evmc
 
 /*
 #cgo CFLAGS:  -I${SRCDIR}/.. -Wall -Wextra
+#cgo LDFLAGS: /root/hera/build/src/libhera.a  -L/root/hera/build/src/ -lhera -L/root/hera/build/deps/src/wabt-build/ -lwabt -rdynamic -lstdc++ -Wl,-unresolved-symbols=ignore-all
 #cgo !windows LDFLAGS: -ldl
 
 #include <evmc/evmc.h>
@@ -14,6 +15,14 @@ package evmc
 
 #include <stdlib.h>
 #include <string.h>
+
+//struct evmc_instance* evmc_create_hera;
+//typedef struct evmc_instance* (*evmc_create_fn)(void);
+// extern evmc_create_fn evmc_create_heraasdf;
+
+struct evmc_instance* evmc_create_hera_wrapper() {
+	return evmc_create_hera();
+}
 
 static inline enum evmc_set_option_result set_option(struct evmc_instance* instance, char* name, char* value)
 {
@@ -150,13 +159,22 @@ type Instance struct {
 }
 
 func Load(filename string) (instance *Instance, err error) {
+	fmt.Println("evmc/bindings/go/evmc/evmc.go Load...")
+
 	cfilename := C.CString(filename)
 	var loaderErr C.enum_evmc_loader_error_code
 	handle := C.evmc_load_and_create(cfilename, &loaderErr)
 	C.free(unsafe.Pointer(cfilename))
+
+	loaderErr = C.EVMC_LOADER_SUCCESS
 	switch loaderErr {
 	case C.EVMC_LOADER_SUCCESS:
+		fmt.Println("case C.EVMC_LOADER_SUCCESS");
+		//instance = &Instance{handle}
+		handle = C.evmc_create_hera_wrapper()
+		fmt.Println("called C.evmc_create_hera_wrapper...")
 		instance = &Instance{handle}
+		fmt.Println("have instance...")
 	case C.EVMC_LOADER_CANNOT_OPEN:
 		err = fmt.Errorf("evmc loader: cannot open %s", filename)
 	case C.EVMC_LOADER_SYMBOL_NOT_FOUND:
@@ -170,6 +188,7 @@ func Load(filename string) (instance *Instance, err error) {
 	default:
 		panic(fmt.Sprintf("evmc loader: unexpected error (%d)", int(loaderErr)))
 	}
+	fmt.Println("returning instance...")
 	return instance, err
 }
 
