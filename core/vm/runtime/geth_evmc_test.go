@@ -52,6 +52,7 @@ var testVMConfig = func() vm.Config {
 }()
 
 
+/*
 func TestCallEwasm(t *testing.T) {
 	state, _ := state.New(common.Hash{}, state.NewDatabase(ethdb.NewMemDatabase()))
 	address := common.HexToAddress("0x0a")
@@ -72,8 +73,6 @@ func TestCallEwasm(t *testing.T) {
 		panic("Need to pass --ewasmfile arg!")
 	}
 
-	// fmt.Println("read wasmfile:", wasmbytes)
-	
 	// getCallDataSize.json
 	//var code = common.Hex2Bytes("0061736d01000000010d036000017f60027f7f0060000002340208657468657265756d0f67657443616c6c4461746153697a65000008657468657265756$
 
@@ -100,6 +99,7 @@ func TestCallEwasm(t *testing.T) {
 	}
 
 }
+*/
 
 
 
@@ -108,25 +108,32 @@ func BenchmarkCallEwasm(b *testing.B) {
 	state, _ := state.New(common.Hash{}, state.NewDatabase(ethdb.NewMemDatabase()))
 	address := common.HexToAddress("0x0a")
 
-	// getCallDataSize.json
-	//var code = common.Hex2Bytes("0061736d01000000010d036000017f60027f7f0060000002340208657468657265756d0f67657443616c6c4461746153697a65000008657468657265756$
+	var (
+		wasmbytes  []byte
+		err  error
+    ret  []byte
+	)
 
-	var code = common.Hex2Bytes("0061736d0100000001090260027f7f0060000002130108657468657265756d0666696e6973680000030201010503010001071102066d656d6f72790200046d61696e00010a0a0108004100411410000b0b1a010041000b1400000000000000000000000000000000efbeadde")
+	fmt.Println("ewasmfile:", ewasmfile)
 
-	state.SetCode(address, code)
+	if len(ewasmfile) > 0 {
+		wasmbytes, err = ioutil.ReadFile(ewasmfile)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		panic("Need to pass --ewasmfile arg!")
+	}
+
+	state.SetCode(address, wasmbytes)
 	ewasmChainConfig := &params.ChainConfig{
 		ByzantiumBlock: new(big.Int),
 		EWASMBlock:	new(big.Int),
 	};
 
-	var (
-		ret  []byte
-		err  error
-	)
-
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ret, _, err = Call(address, nil, &Config{ChainConfig: ewasmChainConfig, State: state, EVMConfig: testVMConfig, GasLimit: 1000000})
+		ret, _, err = Call(address, common.Hex2Bytes(input), &Config{ChainConfig: ewasmChainConfig, State: state, EVMConfig: testVMConfig, GasLimit: 1000000})
 	}
 	b.StopTimer()
 	//Check if it is correct
@@ -135,12 +142,10 @@ func BenchmarkCallEwasm(b *testing.B) {
 		return
 	}
 
-	var expected = "00000000000000000000000000000000efbeadde"
-
+	fmt.Println("got return bytes:", common.Bytes2Hex(ret))
 	if common.Bytes2Hex(ret) != expected {
 		b.Error(fmt.Sprintf("Expected %v, got %v", expected, common.Bytes2Hex(ret)))
 		return
 	}
-	//fmt.Println("gas used:", startGas - contract.Gas)
 
 }
