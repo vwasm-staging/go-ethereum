@@ -131,9 +131,11 @@ func BenchmarkCallEwasm(b *testing.B) {
 		EWASMBlock:	new(big.Int),
 	};
 
+	startGas := uint64(1000000000000) // 1 trillion
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ret, _, err = Call(address, common.Hex2Bytes(input), &Config{ChainConfig: ewasmChainConfig, State: state, EVMConfig: testVMConfig, GasLimit: 1000000})
+		ret, _, err = Call(address, common.Hex2Bytes(input), &Config{ChainConfig: ewasmChainConfig, State: state, EVMConfig: testVMConfig, GasLimit: startGas})
 	}
 	b.StopTimer()
 	//Check if it is correct
