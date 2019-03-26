@@ -6,7 +6,7 @@ package evmc
 
 /*
 #cgo CFLAGS:  -I${SRCDIR}/.. -Wall -Wextra
-#cgo LDFLAGS: /root/hera/build/src/libhera.a  -L/root/hera/build/src/ -lhera -L/root/hera/build/deps/src/wabt-build/ -lwabt -rdynamic -lstdc++ -Wl,-unresolved-symbols=ignore-all
+#cgo LDFLAGS: /root/hera/build/src/libhera.a  -L/root/hera/build/src/ -lhera -L/root/hera/build/deps/src/wabt-build/ -lwabt /root/hera/build/deps/src/wavm-build/lib/libwavm.a -L/usr/lib/llvm-6.0/build/lib/ -lLLVM -L/root/hera/build/deps/src/binaryen-build/lib/ -lbinaryenfull -rdynamic -lstdc++ -Wl,-unresolved-symbols=ignore-all
 #cgo !windows LDFLAGS: -ldl
 
 #include <evmc/evmc.h>
@@ -16,13 +16,7 @@ package evmc
 #include <stdlib.h>
 #include <string.h>
 
-//struct evmc_instance* evmc_create_hera;
-//typedef struct evmc_instance* (*evmc_create_fn)(void);
-// extern evmc_create_fn evmc_create_heraasdf;
-
-struct evmc_instance* evmc_create_hera_wrapper() {
-	return evmc_create_hera();
-}
+extern struct evmc_instance* evmc_create_hera();
 
 static inline enum evmc_set_option_result set_option(struct evmc_instance* instance, char* name, char* value)
 {
@@ -171,7 +165,7 @@ func Load(filename string) (instance *Instance, err error) {
 	case C.EVMC_LOADER_SUCCESS:
 		fmt.Println("case C.EVMC_LOADER_SUCCESS");
 		//instance = &Instance{handle}
-		handle = C.evmc_create_hera_wrapper()
+		handle = C.evmc_create_hera()
 		fmt.Println("called C.evmc_create_hera_wrapper...")
 		instance = &Instance{handle}
 		fmt.Println("have instance...")
