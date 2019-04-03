@@ -35,7 +35,7 @@ func (sel Selector) String() string {
 	if sel == "" {
 		return "interpreter"
 	}
-	return "unknown"
+	return string(sel)
 }
 
 // MarshalText implements encoding.TextMarshaler interface.
@@ -52,7 +52,17 @@ func (sel *Selector) UnmarshalText(text []byte) error {
 		*sel = ""
 		return nil
 	}
-	return fmt.Errorf(`unknown option %q, want "interpreter"`, text)
+	createMu.Lock()
+	defer createMu.Unlock()
+	if evmcInstance != nil {
+		return fmt.Errorf("only single EVMC module is currently supported")
+	}
+	instance, err := initEvmcModule(string(text))
+	if err != nil {
+		return err
+	}
+	evmcInstance = instance
+	return nil
 }
 
 // emptyCodeHash is used by create to ensure deployment is disallowed to already

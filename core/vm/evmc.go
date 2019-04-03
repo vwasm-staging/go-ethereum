@@ -29,7 +29,6 @@ import (
 	"github.com/ethereum/evmc/bindings/go/evmc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -47,48 +46,45 @@ var (
 	evmcInstance *evmc.Instance // The EVMC VM instance.
 )
 
-// NewEVMC creates new EVMC-based VM execution context.
-func NewEVMC(config string, env *EVM) *EVMC {
-	createMu.Lock()
-	defer createMu.Unlock()
+func initEvmcModule(config string) (*evmc.Instance, error) {
+	options := strings.Split(config, ",")
+	path := options[0]
 
-	if evmcInstance == nil {
-		options := strings.Split(config, ",")
-		path := options[0]
-
-		if path == "" {
-			panic("EVMC VM path not provided, set --vm.(evm|ewasm)=/path/to/vm")
-		}
-
-		var err error
-		evmcInstance, err = evmc.Load(path)
-		if err != nil {
-			panic(err.Error())
-		}
-		log.Info("EVMC VM loaded", "name", evmcInstance.Name(), "version", evmcInstance.Version(), "path", path)
-
-		for _, option := range options[1:] {
-			if idx := strings.Index(option, "="); idx >= 0 {
-				name := option[:idx]
-				value := option[idx+1:]
-				err := evmcInstance.SetOption(name, value)
-				if err == nil {
-					log.Info("EVMC VM option set", "name", name, "value", value)
-				} else {
-					log.Warn("EVMC VM option setting failed", "name", name, "error", err)
-				}
-			}
-		}
-
-		evm1Cap := evmcInstance.HasCapability(evmc.CapabilityEVM1)
-		ewasmCap := evmcInstance.HasCapability(evmc.CapabilityEWASM)
-		log.Info("EVMC VM capabilities", "evm1", evm1Cap, "ewasm", ewasmCap)
-
-		evmcConfig = config // Remember the config.
-	} else if evmcConfig != config {
-		log.Error("New EVMC VM requested", "newconfig", config, "oldconfig", evmcConfig)
+	instance, err := evmc.Load(path)
+	if err != nil {
+		return nil, err
 	}
 
+	//	log.Info("EVMC VM loaded", "name", instance.Name(), "version", instance.Version(), "path", path)
+	fmt.Printf("EVMC VM loaded %s %s %s\n", instance.Name(), instance.Version(), path)
+
+	for _, option := range options[1:] {
+		if idx := strings.Index(option, "="); idx >= 0 {
+			name := option[:idx]
+			value := option[idx+1:]
+			err := instance.SetOption(name, value)
+			if err == nil {
+				// log.Info("EVMC VM option set", "name", name, "value", value)
+				fmt.Printf("EVMC VM option set %s=%s\n", name, value)
+			} else {
+				return nil, fmt.Errorf("EVMC VM option setting failed '%s=%s'", name, value)
+			}
+		}
+	}
+
+	evm1Cap := instance.HasCapability(evmc.CapabilityEVM1)
+	ewasmCap := instance.HasCapability(evmc.CapabilityEWASM)
+	// log.Info("EVMC VM capabilities", "evm1", evm1Cap, "ewasm", ewasmCap)
+	fmt.Printf("EVMC VM capabilities: evm=%t ewasm=%t\n", evm1Cap, ewasmCap)
+
+	return instance, nil
+}
+
+// NewEVMC creates new EVMC-based VM execution context.
+func NewEVMC(config string, env *EVM) *EVMC {
+	if evmcInstance == nil {
+		panic("EVMC module not loaded")
+	}
 	return &EVMC{evmcInstance, env, false}
 }
 
