@@ -17,6 +17,8 @@
 package vm
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"math/big"
 	"sync/atomic"
@@ -418,6 +420,115 @@ func (c *codeAndHash) Hash() common.Hash {
 	return c.hash
 }
 
+func hasEIP3540(vmConfig *Config) bool {
+	for _, eip := range vmConfig.ExtraEips {
+		if eip == 3540 {
+			return true
+		}
+	}
+	return false
+}
+
+var eofMagic = [...]byte{0xCA, 0xFE}
+
+type eof1Header struct {
+	codeSize uint16 // cannot be 0
+	dataSize uint16 // can be 0 if data section is absent
+}
+
+func hasFormatByte(code []byte) bool {
+	return len(code) != 0 && code[0] == 0xEF
+}
+
+func hasEOFMagic(code []byte) bool {
+	magicLen := len(eofMagic)
+	codeLen := len(code)
+
+	return 1+magicLen <= codeLen && bytes.Equal(code[1:1+magicLen], eofMagic[:])
+}
+
+func readEOF1Header(code []byte) (eof1Header, error) {
+	if !hasFormatByte(code) {
+		return eof1Header{}, ErrEOF1InvalidFormatByte
+	}
+
+	if !hasEOFMagic(code) {
+		return eof1Header{}, ErrEOF1InvalidMagic
+	}
+
+	codeLen := len(code)
+
+	i := 1+len(eofMagic)
+	if i >= codeLen || code[i] != 1 {
+		return eof1Header{}, ErrEOF1InvalidVersion
+	}
+	i += 1
+
+
+	var header eof1Header
+sectionLoop:
+	for i < codeLen {
+		sectionKind := code[i]
+		i += 1
+		switch sectionKind {
+		case 0:
+			break sectionLoop
+		case 1:
+			// Only 1 code section is allowed.
+			if header.codeSize != 0 {
+				return eof1Header{}, ErrEOF1MultipleCodeSections
+			}
+			// Code section size must be present.
+			if i+2 > codeLen {
+				return eof1Header{}, ErrEOF1CodeSectionSizeMissing
+			}
+			header.codeSize = binary.BigEndian.Uint16(code[i : i+2])
+			// Code section size must not be 0.
+			if header.codeSize == 0 {
+				return eof1Header{}, ErrEOF1EmptyCodeSection
+			}
+			i += 2
+		case 2:
+			// Data section is allowed only after code section.
+			if header.codeSize == 0 {
+				return eof1Header{}, ErrEOF1DataSectionBeforeCodeSection
+			}
+			// Only 1 data section is allowed.
+			if header.dataSize != 0 {
+				return eof1Header{}, ErrEOF1MultipleDataSections
+			}
+			// Data section size must be present.
+			if i+2 > codeLen {
+				return eof1Header{}, ErrEOF1DataSectionSizeMissing
+			}
+			header.dataSize = binary.BigEndian.Uint16(code[i : i+2])
+			// Data section size must not be 0.
+			if header.dataSize == 0 {
+				return eof1Header{}, ErrEOF1EmptyDataSection
+			}
+			i += 2
+		default:
+			return eof1Header{}, ErrEOF1UnknownSection
+		}
+	}
+	// 1 code section is required.
+	if header.codeSize == 0 {
+		return eof1Header{}, ErrEOF1CodeSectionMissing
+	}
+	// Declared section sizes must correspond to real size (trailing bytes are not allowed.)
+	if i+int(header.codeSize)+int(header.dataSize) != codeLen {
+		return eof1Header{}, ErrEOF1InvalidTotalSize
+	}
+
+	return header, nil
+}
+
+func isValidEOF(code []byte) bool {
+	_, err := readEOF1Header(code)
+	return err == nil
+}
+
+
 // create creates a new contract using code as deployment code.
 func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64, value *big.Int, address common.Address) ([]byte, common.Address, uint64, error) {
 	// Depth check execution. Fail if we're trying to execute above the
@@ -469,9 +580,16 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 		err = ErrMaxCodeSizeExceeded
 	}
 
-	// Reject code starting with 0xEF if EIP-3541 is enabled.
-	if err == nil && len(ret) >= 1 && ret[0] == 0xEF && evm.chainRules.IsLondon {
-		err = ErrInvalidCode
+	if err == nil && len(ret) >= 1 && ret[0] == 0xEF {
+		if hasEIP3540(&evm.vmConfig) {
+			// Allow only valid EOF1 if EIP-3540 is enabled.
+			if !isValidEOF(ret) {
+				err = ErrInvalidCodeFormat
+			}
+		} else if evm.chainRules.IsLondon {
+			// Reject code starting with 0xEF in London.
+			err = ErrInvalidCode
+		}
 	}
 
 	// if the contract creation ran successfully and no errors were returned
